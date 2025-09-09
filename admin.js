@@ -229,8 +229,7 @@ class AdminPanel {
     async performOCR(imageData) {
         try {
             // 使用Tesseract.js进行OCR识别
-            const { createWorker } = Tesseract;
-            const worker = await createWorker('chi_sim+eng');
+            const worker = await Tesseract.createWorker('chi_sim+eng');
             
             const { data: { text } } = await worker.recognize(imageData);
             await worker.terminate();
@@ -240,7 +239,7 @@ class AdminPanel {
             
         } catch (error) {
             console.error('OCR识别失败:', error);
-            this.showNotification('图片识别失败，请尝试上传更清晰的图片', 'error');
+            this.showNotification('图片识别失败，请尝试上传更清晰的图片或使用文本文件', 'error');
         }
     }
     
@@ -295,7 +294,10 @@ class AdminPanel {
         
         if (newPhones.length > 0) {
             this.phonePool.push(...newPhones);
-            await this.savePhonePool();
+            this.savePhonePool().catch(err => {
+                console.error('保存号码池失败:', err);
+                this.showNotification('保存号码池失败，请重试', 'error');
+            });
             this.updateUI();
             this.showNotification(`成功识别并添加 ${newPhones.length} 个电话号码`, 'success');
         } else {

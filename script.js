@@ -289,7 +289,7 @@ class PhoneDialer {
             this.lastCallTime = new Date();
 
             // 从列表中移除号码
-            await this.removePhone(phone);
+this.removePhone(phone).catch(console.error);
 
             this.showNotification(`已拨打 ${phone}`, 'success');
         }, 1000);
