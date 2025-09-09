@@ -24,6 +24,7 @@ class PhoneDialer {
         this.cameraCanvas = document.getElementById('cameraCanvas');
         this.cameraArea = document.getElementById('cameraArea');
         this.cameraPlaceholder = document.getElementById('cameraPlaceholder');
+        this.imageInput = document.getElementById('imageInput');
         
         // 按钮元素
         this.addPhonesBtn = document.getElementById('addPhonesBtn');
@@ -31,6 +32,7 @@ class PhoneDialer {
         this.startCameraBtn = document.getElementById('startCameraBtn');
         this.captureBtn = document.getElementById('captureBtn');
         this.stopCameraBtn = document.getElementById('stopCameraBtn');
+        this.uploadImageBtn = document.getElementById('uploadImageBtn');
         this.sortBtn = document.getElementById('sortBtn');
         this.clearAllBtn = document.getElementById('clearAllBtn');
         
@@ -78,6 +80,10 @@ class PhoneDialer {
         this.captureBtn.addEventListener('click', () => this.captureAndRecognize());
         this.stopCameraBtn.addEventListener('click', () => this.stopCamera());
         this.cameraPlaceholder.addEventListener('click', () => this.startCamera());
+        
+        // 图片上传识别
+        this.uploadImageBtn.addEventListener('click', () => this.imageInput.click());
+        this.imageInput.addEventListener('change', (e) => this.handleImageUpload(e));
         
         // 控制按钮
         this.sortBtn.addEventListener('click', () => this.sortPhones());
@@ -580,6 +586,73 @@ class PhoneDialer {
         // 去重并验证
         const uniquePhones = [...new Set(matches)];
         return uniquePhones.filter(phone => this.isValidPhone(phone));
+    }
+    
+    // 处理图片上传识别
+    async handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        // 验证文件类型
+        if (!file.type.startsWith('image/')) {
+            this.showNotification('请选择图片文件', 'error');
+            return;
+        }
+        
+        // 验证文件大小（限制10MB）
+        if (file.size > 10 * 1024 * 1024) {
+            this.showNotification('图片文件过大，请选择小于10MB的图片', 'error');
+            return;
+        }
+        
+        try {
+            // 显示识别状态
+            this.uploadImageBtn.disabled = true;
+            this.uploadImageBtn.textContent = '识别中...';
+            
+            // 读取图片文件
+            const imageData = await this.readImageFile(file);
+            
+            // 使用OCR识别文字
+            const recognizedText = await this.performOCR(imageData);
+            
+            // 提取手机号
+            const phoneNumbers = this.extractPhoneNumbers(recognizedText);
+            
+            if (phoneNumbers.length > 0) {
+                // 添加识别到的手机号
+                phoneNumbers.forEach(phone => {
+                    if (!this.phones.includes(phone)) {
+                        this.phones.push(phone);
+                    }
+                });
+                this.saveData();
+                this.updateUI();
+                this.showNotification(`成功从图片中识别到 ${phoneNumbers.length} 个手机号`, 'success');
+            } else {
+                this.showNotification('图片中未识别到有效的手机号', 'warning');
+            }
+            
+        } catch (error) {
+            console.error('图片识别失败:', error);
+            this.showNotification('图片识别失败，请重试', 'error');
+        } finally {
+            // 恢复按钮状态
+            this.uploadImageBtn.disabled = false;
+            this.uploadImageBtn.textContent = '🖼️ 上传图片识别';
+            // 清空文件输入
+            this.imageInput.value = '';
+        }
+    }
+    
+    // 读取图片文件
+    readImageFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsDataURL(file);
+        });
     }
 
     // 获取统计信息
