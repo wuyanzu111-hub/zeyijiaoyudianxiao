@@ -14,9 +14,18 @@ class PhoneDialer {
         
         this.currentUser = this.getCurrentUser();
         this.initializeElements();
-        this.loadAssignedPhones();
         this.bindEvents();
+        this.init();
+    }
+
+    async init() {
+        // 加载分配的号码
+        await this.loadAssignedPhones();
+        
+        // 更新界面
         this.updateUI();
+        
+        // 显示欢迎信息
         this.updateWelcomeText();
     }
 
@@ -71,7 +80,7 @@ class PhoneDialer {
     // 绑定事件监听器
     bindEvents() {
         // 添加号码按钮
-        this.addPhonesBtn.addEventListener('click', () => this.addPhones());
+        this.addPhonesBtn.addEventListener('click', () => this.addPhones().catch(console.error));
         
         // 文件上传
         this.uploadFileBtn.addEventListener('click', () => this.fileInput.click());
@@ -94,8 +103,8 @@ class PhoneDialer {
         this.imageInput.addEventListener('change', (e) => this.handleImageUpload(e));
         
         // 控制按钮
-        this.sortBtn.addEventListener('click', () => this.sortPhones());
-        this.clearAllBtn.addEventListener('click', () => this.clearAllPhones());
+        this.sortBtn.addEventListener('click', () => this.sortPhones().catch(console.error));
+        this.clearAllBtn.addEventListener('click', () => this.clearAllPhones().catch(console.error));
         
         // 模态框
         this.confirmCallBtn.addEventListener('click', () => this.executeCall());
@@ -110,13 +119,13 @@ class PhoneDialer {
         // 输入框回车键
         this.phoneInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && e.ctrlKey) {
-                this.addPhones();
+                this.addPhones().catch(console.error);
             }
         });
     }
 
     // 添加电话号码
-    addPhones() {
+    async addPhones() {
         const input = this.phoneInput.value.trim();
         if (!input) {
             this.showNotification('请输入电话号码', 'error');
@@ -142,7 +151,7 @@ class PhoneDialer {
             this.phones.push(...validPhones);
             this.sortPhones();
             this.phoneInput.value = '';
-            this.saveData();
+            await this.saveData();
             this.updateUI();
             
             let message = `成功添加 ${validPhones.length} 个号码`;
@@ -169,7 +178,7 @@ class PhoneDialer {
         reader.onload = (e) => {
             const content = e.target.result;
             this.phoneInput.value = content;
-            this.addPhones();
+            this.addPhones().catch(console.error);
         };
         reader.readAsText(file);
         
@@ -211,18 +220,18 @@ class PhoneDialer {
     }
 
     // 排序电话号码
-    sortPhones() {
+    async sortPhones() {
         this.phones.sort((a, b) => {
             // 按数字大小排序
             return parseInt(a) - parseInt(b);
         });
-        this.saveData();
+        await this.saveData();
         this.updateUI();
         this.showNotification('号码已重新排序', 'info');
     }
 
     // 清空所有号码
-    clearAllPhones() {
+    async clearAllPhones() {
         if (this.phones.length === 0) {
             this.showNotification('列表已经是空的', 'info');
             return;
@@ -230,7 +239,7 @@ class PhoneDialer {
 
         if (confirm(`确定要清空所有 ${this.phones.length} 个号码吗？`)) {
             this.phones = [];
-            this.saveData();
+            await this.saveData();
             this.updateUI();
             this.showNotification('已清空所有号码', 'success');
         }
@@ -280,7 +289,7 @@ class PhoneDialer {
             this.lastCallTime = new Date();
 
             // 从列表中移除号码
-            this.removePhone(phone);
+            await this.removePhone(phone);
 
             this.showNotification(`已拨打 ${phone}`, 'success');
         }, 1000);
@@ -292,19 +301,19 @@ class PhoneDialer {
     }
 
     // 移除单个号码
-    removePhone(phone) {
+    async removePhone(phone) {
         const index = this.phones.indexOf(phone);
         if (index > -1) {
             this.phones.splice(index, 1);
-            this.saveData();
+            await this.saveData();
             this.updateUI();
         }
     }
 
     // 删除号码（带确认）
-    deletePhone(phone) {
+    async deletePhone(phone) {
         if (confirm(`确定要删除号码 ${phone} 吗？`)) {
-            this.removePhone(phone);
+            await this.removePhone(phone);
             this.showNotification(`已删除号码 ${phone}`, 'info');
         }
     }
@@ -346,7 +355,7 @@ class PhoneDialer {
                     <button class="action-btn call-btn" onclick="phoneDialer.callPhone('${phone}')">
                         <i class="fas fa-phone"></i> 拨打
                     </button>
-                    <button class="action-btn delete-btn" onclick="phoneDialer.deletePhone('${phone}')">
+                    <button class="action-btn delete-btn" onclick="phoneDialer.deletePhone('${phone}').catch(console.error)">
                         <i class="fas fa-trash"></i> 删除
                     </button>
                 </div>
@@ -399,78 +408,78 @@ class PhoneDialer {
         // Ctrl+S 排序
         if (e.key === 's' && e.ctrlKey) {
             e.preventDefault();
-            this.sortPhones();
+            this.sortPhones().catch(console.error);
         }
         
         // Ctrl+D 清空
         if (e.key === 'd' && e.ctrlKey) {
             e.preventDefault();
-            this.clearAllPhones();
+            this.clearAllPhones().catch(console.error);
         }
     }
 
-    // 保存数据到本地存储
-    saveData() {
+    // 保存数据到服务器
+    async saveData() {
         const data = {
             phones: this.phones,
             totalCalls: this.totalCalls,
             lastCallTime: this.lastCallTime
         };
-        localStorage.setItem('phoneDialerData', JSON.stringify(data));
+        
+        if (this.currentUser) {
+            try {
+                await apiClient.updateUserData(this.currentUser.username, data);
+            } catch (error) {
+                console.error('保存数据失败:', error);
+            }
+        }
     }
 
-    // 从本地存储加载数据
-    loadData() {
-        try {
-            const data = localStorage.getItem('phoneDialerData');
-            if (data) {
-                const parsed = JSON.parse(data);
-                this.phones = parsed.phones || [];
-                this.totalCalls = parsed.totalCalls || 0;
-                this.lastCallTime = parsed.lastCallTime ? new Date(parsed.lastCallTime) : null;
+    // 从服务器加载数据
+    async loadData() {
+        if (this.currentUser) {
+            try {
+                const data = await apiClient.getUserData(this.currentUser.username);
+                this.phones = data.phones || [];
+                this.totalCalls = data.totalCalls || 0;
+                this.lastCallTime = data.lastCallTime ? new Date(data.lastCallTime) : null;
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                this.showNotification('加载历史数据失败', 'error');
             }
-        } catch (error) {
-            console.error('加载数据失败:', error);
-            this.showNotification('加载历史数据失败', 'error');
         }
     }
 
     // 加载分配给当前用户的号码
-    loadAssignedPhones() {
+    async loadAssignedPhones() {
         if (!this.currentUser) {
-            this.loadData();
+            await this.loadData();
             return;
         }
         
-        const assignments = localStorage.getItem('phoneAssignments');
-        if (assignments) {
-            const allAssignments = JSON.parse(assignments);
+        try {
+            // 获取分配记录
+            const allAssignments = await apiClient.getAssignments();
             const userPhones = allAssignments[this.currentUser.username] || [];
             
-            // 合并分配的号码和本地添加的号码
-            const localData = localStorage.getItem('phoneDialerData');
-            let existingPhones = [];
-            let totalCalls = 0;
-            let lastCallTime = null;
+            // 获取用户的个人数据
+            const userData = await apiClient.getUserData(this.currentUser.username);
+            const existingPhones = userData.phones || [];
+            const totalCalls = userData.totalCalls || 0;
+            const lastCallTime = userData.lastCallTime ? new Date(userData.lastCallTime) : null;
             
-            if (localData) {
-                const parsed = JSON.parse(localData);
-                existingPhones = parsed.phones || [];
-                totalCalls = parsed.totalCalls || 0;
-                lastCallTime = parsed.lastCallTime ? new Date(parsed.lastCallTime) : null;
-            }
-            
-            // 去重合并
+            // 去重合并分配的号码和个人添加的号码
             const allPhones = [...new Set([...userPhones, ...existingPhones])];
             this.phones = allPhones;
             this.totalCalls = totalCalls;
             this.lastCallTime = lastCallTime;
             
-            // 保存到本地存储
-            this.saveData();
-        } else {
-            // 如果没有分配，加载本地号码
-            this.loadData();
+            // 保存合并后的数据
+            await this.saveData();
+        } catch (error) {
+            console.error('加载分配号码失败:', error);
+            // 如果获取失败，尝试加载本地数据
+            await this.loadData();
         }
     }
 
@@ -624,7 +633,7 @@ class PhoneDialer {
                         this.phones.push(phone);
                     }
                 });
-                this.saveData();
+                await this.saveData();
                 this.updateUI();
                 this.showNotification(`成功识别到 ${phoneNumbers.length} 个手机号`, 'success');
             } else {
@@ -715,7 +724,7 @@ class PhoneDialer {
                         this.phones.push(phone);
                     }
                 });
-                this.saveData();
+                await this.saveData();
                 this.updateUI();
                 this.showNotification(`成功从图片中识别到 ${phoneNumbers.length} 个手机号`, 'success');
             } else {
@@ -775,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // 防止页面意外关闭时丢失数据
 window.addEventListener('beforeunload', (e) => {
     if (phoneDialer && phoneDialer.phones.length > 0) {
-        phoneDialer.saveData();
+        phoneDialer.saveData().catch(console.error);
     }
 });
 

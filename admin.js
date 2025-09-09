@@ -7,16 +7,16 @@ class AdminPanel {
         this.init();
     }
     
-    init() {
+    async init() {
         // 验证管理员权限
         if (!requireAuth('admin')) {
             return;
         }
         
         // 初始化用户信息
-        this.loadUsers();
-        this.loadPhonePool();
-        this.loadAssignments();
+        await this.loadUsers();
+        await this.loadPhonePool();
+        await this.loadAssignments();
         
         // 绑定事件
         this.bindEvents();
@@ -63,48 +63,73 @@ class AdminPanel {
         document.getElementById('addUserForm').addEventListener('submit', (e) => {
             this.handleAddUser(e);
         });
+        
+        // 图片预览相关事件
+        document.getElementById('confirmOCR').addEventListener('click', () => {
+            this.confirmImageOCR();
+        });
+        
+        document.getElementById('cancelPreview').addEventListener('click', () => {
+            this.cancelImagePreview();
+        });
     }
     
-    loadUsers() {
-        const savedUsers = localStorage.getItem('systemUsers');
-        if (savedUsers) {
-            this.users = JSON.parse(savedUsers);
-        } else {
-            // 默认用户
+    async loadUsers() {
+        try {
+            this.users = await apiClient.getUsers();
+        } catch (error) {
+            console.error('加载用户失败:', error);
+            // 使用默认用户作为备份
             this.users = {
                 'admin': { password: 'admin123', role: 'admin', name: '系统管理员' },
                 'sales1': { password: 'sales123', role: 'salesperson', name: '业务员1' },
                 'sales2': { password: 'sales123', role: 'salesperson', name: '业务员2' },
                 'sales3': { password: 'sales123', role: 'salesperson', name: '业务员3' }
             };
-            this.saveUsers();
+            await this.saveUsers();
         }
     }
     
-    saveUsers() {
-        localStorage.setItem('systemUsers', JSON.stringify(this.users));
-    }
-    
-    loadPhonePool() {
-        const savedPool = localStorage.getItem('phonePool');
-        if (savedPool) {
-            this.phonePool = JSON.parse(savedPool);
+    async saveUsers() {
+        try {
+            await apiClient.updateUsers(this.users);
+        } catch (error) {
+            console.error('保存用户失败:', error);
         }
     }
     
-    savePhonePool() {
-        localStorage.setItem('phonePool', JSON.stringify(this.phonePool));
-    }
-    
-    loadAssignments() {
-        const savedAssignments = localStorage.getItem('phoneAssignments');
-        if (savedAssignments) {
-            this.assignments = JSON.parse(savedAssignments);
+    async loadPhonePool() {
+        try {
+            this.phonePool = await apiClient.getPhonePool();
+        } catch (error) {
+            console.error('加载号码池失败:', error);
+            this.phonePool = [];
         }
     }
     
-    saveAssignments() {
-        localStorage.setItem('phoneAssignments', JSON.stringify(this.assignments));
+    async savePhonePool() {
+        try {
+            await apiClient.updatePhonePool(this.phonePool);
+        } catch (error) {
+            console.error('保存号码池失败:', error);
+        }
+    }
+    
+    async loadAssignments() {
+        try {
+            this.assignments = await apiClient.getAssignments();
+        } catch (error) {
+            console.error('加载分配记录失败:', error);
+            this.assignments = {};
+        }
+    }
+    
+    async saveAssignments() {
+        try {
+            await apiClient.updateAssignments(this.assignments);
+        } catch (error) {
+            console.error('保存分配记录失败:', error);
+        }
     }
     
     handleDragOver(e) {
@@ -134,11 +159,18 @@ class AdminPanel {
     }
     
     processFile(file) {
-        if (!file.name.match(/\.(txt|csv)$/i)) {
-            this.showNotification('请选择 .txt 或 .csv 格式的文件', 'error');
+        // 支持文本文件和图片文件
+        if (file.name.match(/\.(txt|csv)$/i)) {
+            this.processTextFile(file);
+        } else if (file.name.match(/\.(jpg|jpeg|png|bmp|gif|webp)$/i)) {
+            this.processImageFile(file);
+        } else {
+            this.showNotification('请选择文本文件(.txt, .csv)或图片文件(.jpg, .png等)', 'error');
             return;
         }
-        
+    }
+    
+    processTextFile(file) {
         const reader = new FileReader();
         reader.onload = (e) => {
             const content = e.target.result;
@@ -147,30 +179,163 @@ class AdminPanel {
         reader.readAsText(file);
     }
     
+    processImageFile(file) {
+        // 存储当前文件以供后续处理
+        this.currentImageFile = file;
+        
+        // 显示图片预览
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const imageData = e.target.result;
+            this.showImagePreview(imageData);
+        };
+        reader.readAsDataURL(file);
+    }
+    
+    showImagePreview(imageData) {
+        const previewContainer = document.getElementById('imagePreview');
+        const previewImage = document.getElementById('previewImage');
+        
+        previewImage.src = imageData;
+        previewContainer.style.display = 'block';
+        
+        // 存储图片数据以供OCR使用
+        this.currentImageData = imageData;
+    }
+    
+    confirmImageOCR() {
+        if (this.currentImageData) {
+            this.showNotification('正在识别图片中的电话号码，请稍候...', 'info');
+            this.performOCR(this.currentImageData);
+            this.cancelImagePreview();
+        }
+    }
+    
+    cancelImagePreview() {
+        const previewContainer = document.getElementById('imagePreview');
+        const previewImage = document.getElementById('previewImage');
+        
+        previewContainer.style.display = 'none';
+        previewImage.src = '';
+        
+        // 清理存储的数据
+        this.currentImageFile = null;
+        this.currentImageData = null;
+        
+        // 重置文件输入
+        document.getElementById('phoneFileInput').value = '';
+    }
+    
+    async performOCR(imageData) {
+        try {
+            // 使用Tesseract.js进行OCR识别
+            const { createWorker } = Tesseract;
+            const worker = await createWorker('chi_sim+eng');
+            
+            const { data: { text } } = await worker.recognize(imageData);
+            await worker.terminate();
+            
+            // 从识别的文本中提取电话号码
+            this.parsePhoneNumbers(text);
+            
+        } catch (error) {
+            console.error('OCR识别失败:', error);
+            this.showNotification('图片识别失败，请尝试上传更清晰的图片', 'error');
+        }
+    }
+    
     parsePhoneNumbers(content) {
-        const lines = content.split('\n');
         const newPhones = [];
         
-        lines.forEach(line => {
-            const phone = line.trim().replace(/[^0-9]/g, '');
-            if (phone.length >= 10 && phone.length <= 15) {
-                if (!this.phonePool.includes(phone)) {
-                    newPhones.push(phone);
+        // 多种电话号码正则表达式模式
+        const phonePatterns = [
+            // 中国手机号码 (11位)
+            /1[3-9]\d{9}/g,
+            // 带分隔符的手机号码
+            /1[3-9]\d[\s\-]?\d{4}[\s\-]?\d{4}/g,
+            // 固定电话 (带区号)
+            /0\d{2,3}[\s\-]?\d{7,8}/g,
+            // 400/800电话
+            /[48]00[\s\-]?\d{3}[\s\-]?\d{4}/g,
+            // 国际格式 (+86)
+            /\+86[\s\-]?1[3-9]\d{9}/g,
+            // 通用数字串 (10-15位)
+            /\b\d{10,15}\b/g
+        ];
+        
+        // 使用所有模式匹配电话号码
+        phonePatterns.forEach(pattern => {
+            const matches = content.match(pattern) || [];
+            matches.forEach(match => {
+                // 清理号码，只保留数字
+                const cleanPhone = match.replace(/[^0-9]/g, '');
+                
+                // 验证号码有效性
+                if (this.isValidPhoneNumber(cleanPhone)) {
+                    if (!this.phonePool.includes(cleanPhone) && !newPhones.includes(cleanPhone)) {
+                        newPhones.push(cleanPhone);
+                    }
                 }
-            }
+            });
+        });
+        
+        // 按行分割，寻找可能遗漏的号码
+        const lines = content.split(/[\n\r]+/);
+        lines.forEach(line => {
+            // 提取行中的所有数字序列
+            const digitSequences = line.match(/\d+/g) || [];
+            digitSequences.forEach(seq => {
+                if (this.isValidPhoneNumber(seq)) {
+                    if (!this.phonePool.includes(seq) && !newPhones.includes(seq)) {
+                        newPhones.push(seq);
+                    }
+                }
+            });
         });
         
         if (newPhones.length > 0) {
             this.phonePool.push(...newPhones);
-            this.savePhonePool();
+            await this.savePhonePool();
             this.updateUI();
-            this.showNotification(`成功添加 ${newPhones.length} 个号码`, 'success');
+            this.showNotification(`成功识别并添加 ${newPhones.length} 个电话号码`, 'success');
         } else {
-            this.showNotification('未找到有效的电话号码', 'error');
+            this.showNotification('未找到有效的电话号码，请检查图片清晰度或文件格式', 'error');
         }
     }
     
-    distributePhones() {
+    isValidPhoneNumber(phone) {
+        // 基本长度检查
+        if (phone.length < 10 || phone.length > 15) {
+            return false;
+        }
+        
+        // 中国手机号码验证 (11位，以1开头)
+        if (phone.length === 11 && phone.startsWith('1')) {
+            const secondDigit = phone.charAt(1);
+            return ['3', '4', '5', '6', '7', '8', '9'].includes(secondDigit);
+        }
+        
+        // 固定电话验证 (以0开头)
+        if (phone.startsWith('0') && phone.length >= 10 && phone.length <= 12) {
+            return true;
+        }
+        
+        // 400/800电话
+        if ((phone.startsWith('400') || phone.startsWith('800')) && phone.length === 10) {
+            return true;
+        }
+        
+        // 其他10-15位数字（可能是国际号码）
+        if (phone.length >= 10 && phone.length <= 15) {
+            // 排除明显无效的号码（如全是相同数字）
+            const uniqueDigits = new Set(phone).size;
+            return uniqueDigits > 2; // 至少包含3种不同数字
+        }
+        
+        return false;
+    }
+    
+    async distributePhones() {
         const salespeople = Object.keys(this.users).filter(username => 
             this.users[username].role === 'salesperson'
         );
@@ -202,22 +367,26 @@ class AdminPanel {
             phoneIndex += phoneCount;
         });
         
-        this.saveAssignments();
+        await this.saveAssignments();
         this.updateUI();
         
         const totalAssigned = Object.values(this.assignments).reduce((sum, phones) => sum + phones.length, 0);
         this.showNotification(`成功分配 ${totalAssigned} 个号码给 ${salespeople.length} 个业务员`, 'success');
     }
     
-    clearAllData() {
+    async clearAllData() {
         if (confirm('确定要清空所有数据吗？此操作不可恢复。')) {
             this.phonePool = [];
             this.assignments = {};
-            localStorage.removeItem('phonePool');
-            localStorage.removeItem('phoneAssignments');
-            localStorage.removeItem('phoneNumbers');
-            this.updateUI();
-            this.showNotification('所有数据已清空', 'success');
+            
+            try {
+                await apiClient.clearAllData();
+                this.updateUI();
+                this.showNotification('所有数据已清空', 'success');
+            } catch (error) {
+                console.error('清空数据失败:', error);
+                this.showNotification('清空数据失败，请重试', 'error');
+            }
         }
     }
     

@@ -74,7 +74,7 @@ class AuthSystem {
         }
     }
     
-    handleLogin(e) {
+    async handleLogin(e) {
         e.preventDefault();
         
         const username = document.getElementById('username').value.trim();
@@ -103,39 +103,36 @@ class AuthSystem {
             }
         }
         
-        // 验证用户
-        if (this.validateUser(username, password, role)) {
-            // 清除登录尝试记录
-            localStorage.removeItem(attemptKey);
-            localStorage.removeItem(`lastAttempt_${username}`);
+        try {
+            // 使用API进行登录验证
+            const result = await apiClient.login(username, password, role);
             
-            const user = {
-                username: username,
-                role: role,
-                name: this.users[username].name,
-                loginTime: new Date().toISOString(),
-                sessionId: this.generateSessionId()
-            };
-            
-            // 保存登录状态
-            localStorage.setItem('currentUser', JSON.stringify(user));
-            this.currentUser = user;
-            
-            // 记录登录日志
-            this.logUserActivity('login', username);
-            
-            this.showNotification('登录成功！', 'success');
-            
-            // 延迟跳转
-            setTimeout(() => {
-                this.redirectToApp();
-            }, 1000);
-        } else {
-            // 记录失败尝试
-            localStorage.setItem(attemptKey, (attempts + 1).toString());
-            localStorage.setItem(`lastAttempt_${username}`, Date.now().toString());
-            
-            this.showNotification('用户名、密码或角色不正确', 'error');
+            if (result.success) {
+                // 清除登录尝试记录
+                localStorage.removeItem(attemptKey);
+                localStorage.removeItem(`lastAttempt_${username}`);
+                
+                this.currentUser = result.user;
+                
+                // 记录登录日志
+                this.logUserActivity('login', username);
+                
+                this.showNotification('登录成功！', 'success');
+                
+                // 延迟跳转
+                setTimeout(() => {
+                    this.redirectToApp();
+                }, 1000);
+            } else {
+                // 记录失败尝试
+                localStorage.setItem(attemptKey, (attempts + 1).toString());
+                localStorage.setItem(`lastAttempt_${username}`, Date.now().toString());
+                
+                this.showNotification(result.message || '用户名、密码或角色不正确', 'error');
+            }
+        } catch (error) {
+            console.error('登录请求失败:', error);
+            this.showNotification('登录失败，请检查网络连接', 'error');
         }
     }
     
