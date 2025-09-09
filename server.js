@@ -192,21 +192,38 @@ app.put('/api/userData/:username', async (req, res) => {
 // 清空所有数据
 app.delete('/api/data/clear', async (req, res) => {
     try {
-        await writeJsonFile('phonePool.json', []);
-        await writeJsonFile('assignments.json', {});
-        await writeJsonFile('userData.json', {});
+        const files = ['users.json', 'phonePool.json', 'assignments.json', 'userData.json'];
+        for (const file of files) {
+            const filePath = path.join(DATA_DIR, file);
+            try {
+                await fs.unlink(filePath);
+            } catch (error) {
+                // 忽略文件不存在的错误
+            }
+        }
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: '清空数据失败' });
+        res.status(500).json({ error: error.message });
     }
+});
+
+// 健康检查端点
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        port: PORT,
+        dataDir: DATA_DIR
+    });
 });
 
 // 启动服务器
 async function startServer() {
     await initializeData();
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`服务器运行在 http://localhost:${PORT}`);
         console.log('数据存储目录:', DATA_DIR);
+        console.log('服务器监听所有网络接口');
     });
 }
 
