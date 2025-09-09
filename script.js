@@ -5,11 +5,19 @@ class PhoneDialer {
         this.phones = [];
         this.totalCalls = 0;
         this.lastCallTime = null;
+        this.currentUser = null;
         
+        // 验证业务员权限
+        if (!this.requireAuth('salesperson')) {
+            return;
+        }
+        
+        this.currentUser = this.getCurrentUser();
         this.initializeElements();
-        this.loadData();
+        this.loadAssignedPhones();
         this.bindEvents();
         this.updateUI();
+        this.updateWelcomeText();
     }
 
     // 初始化DOM元素引用
@@ -424,6 +432,87 @@ class PhoneDialer {
         } catch (error) {
             console.error('加载数据失败:', error);
             this.showNotification('加载历史数据失败', 'error');
+        }
+    }
+
+    // 加载分配给当前用户的号码
+    loadAssignedPhones() {
+        if (!this.currentUser) {
+            this.loadData();
+            return;
+        }
+        
+        const assignments = localStorage.getItem('phoneAssignments');
+        if (assignments) {
+            const allAssignments = JSON.parse(assignments);
+            const userPhones = allAssignments[this.currentUser.username] || [];
+            
+            // 合并分配的号码和本地添加的号码
+            const localData = localStorage.getItem('phoneDialerData');
+            let existingPhones = [];
+            let totalCalls = 0;
+            let lastCallTime = null;
+            
+            if (localData) {
+                const parsed = JSON.parse(localData);
+                existingPhones = parsed.phones || [];
+                totalCalls = parsed.totalCalls || 0;
+                lastCallTime = parsed.lastCallTime ? new Date(parsed.lastCallTime) : null;
+            }
+            
+            // 去重合并
+            const allPhones = [...new Set([...userPhones, ...existingPhones])];
+            this.phones = allPhones;
+            this.totalCalls = totalCalls;
+            this.lastCallTime = lastCallTime;
+            
+            // 保存到本地存储
+            this.saveData();
+        } else {
+            // 如果没有分配，加载本地号码
+            this.loadData();
+        }
+    }
+
+    // 权限验证
+    requireAuth(role) {
+        const currentUser = this.getCurrentUser();
+        if (!currentUser) {
+            alert('请先登录');
+            window.location.href = 'login.html';
+            return false;
+        }
+        
+        if (role && currentUser.role !== role && currentUser.role !== 'admin') {
+            alert('权限不足');
+            window.location.href = 'login.html';
+            return false;
+        }
+        
+        return true;
+    }
+
+    // 获取当前用户
+    getCurrentUser() {
+        const userStr = localStorage.getItem('currentUser');
+        if (userStr) {
+            try {
+                return JSON.parse(userStr);
+            } catch (error) {
+                console.error('解析用户信息失败:', error);
+                return null;
+            }
+        }
+        return null;
+    }
+
+    // 更新欢迎文本
+    updateWelcomeText() {
+        if (this.currentUser) {
+            const welcomeElement = document.getElementById('welcomeText');
+            if (welcomeElement) {
+                welcomeElement.textContent = `欢迎，${this.currentUser.name}`;
+            }
         }
     }
 

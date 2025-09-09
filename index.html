@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>择一教育电销</title>
+    <title>电话拨号器 - 业务员工作台</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -11,9 +11,14 @@
     <div class="container">
         <header class="header">
             <div class="header-content">
-                <i class="fas fa-phone-alt header-icon"></i>
-                <h1>择一拨号器</h1>
-                <p class="subtitle">批量管理和拨打电话号码</p>
+                <div>
+                    <h1>📞 电话拨号器</h1>
+                    <p>业务员工作台</p>
+                </div>
+                <div class="user-info">
+                    <span id="welcomeText">欢迎使用</span>
+                    <button onclick="logout()" class="btn btn-outline">退出登录</button>
+                </div>
             </div>
         </header>
 
@@ -156,6 +161,7 @@
 
     <!-- Tesseract.js OCR库 -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="auth.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
