@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>电话拨号器 - Web版</title>
+    <title>择一教育电销</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -12,7 +12,7 @@
         <header class="header">
             <div class="header-content">
                 <i class="fas fa-phone-alt header-icon"></i>
-                <h1>电话拨号器</h1>
+                <h1>择一拨号器</h1>
                 <p class="subtitle">批量管理和拨打电话号码</p>
             </div>
         </header>
@@ -45,6 +45,29 @@
                             <button id="uploadFileBtn" class="btn btn-secondary">
                                 <i class="fas fa-file-upload"></i> 选择文件
                             </button>
+                        </div>
+                        
+                        <div class="method-card">
+                            <h3>拍照识别</h3>
+                            <div class="camera-area" id="cameraArea">
+                                <video id="cameraVideo" autoplay playsinline style="display: none; width: 100%; max-width: 300px; border-radius: 10px;"></video>
+                                <canvas id="cameraCanvas" style="display: none;"></canvas>
+                                <div class="camera-placeholder" id="cameraPlaceholder">
+                                    <i class="fas fa-camera"></i>
+                                    <p>点击开启相机拍照识别手机号</p>
+                                </div>
+                            </div>
+                            <div class="camera-controls" style="margin-top: 15px; display: flex; gap: 10px;">
+                                <button id="startCameraBtn" class="btn btn-secondary">
+                                    <i class="fas fa-camera"></i> 开启相机
+                                </button>
+                                <button id="captureBtn" class="btn btn-primary" style="display: none;">
+                                    <i class="fas fa-camera-retro"></i> 拍照识别
+                                </button>
+                                <button id="stopCameraBtn" class="btn btn-outline" style="display: none;">
+                                    <i class="fas fa-times"></i> 关闭
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -127,6 +150,8 @@
     <!-- 通知提示 -->
     <div id="notification" class="notification"></div>
 
+    <!-- Tesseract.js OCR库 -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
