@@ -2,14 +2,30 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs').promises;
 const path = require('path');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 
 // 中间件
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
+app.use(session({
+    secret: 'your-secret-key', // 生产环境中应使用更安全的密钥
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production', // 生产环境中应为 true
+        maxAge: 24 * 60 * 60 * 1000 // 24小时
+    }
+}));
 app.use(express.static('.'));
 
 // 确保数据目录存在
@@ -88,10 +104,9 @@ app.post('/api/auth/login', async (req, res) => {
             const user = {
                 username,
                 role,
-                name: users[username].name,
-                loginTime: new Date().toISOString(),
-                sessionId: Math.random().toString(36).substring(2, 15)
+                name: users[username].name
             };
+            req.session.user = user; // 在会话中存储用户信息
             res.json({ success: true, user });
         } else {
             res.status(401).json({ success: false, message: '用户名、密码或角色不正确' });
@@ -101,8 +116,37 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// 用户登出
+app.post('/api/auth/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) {
+            return res.status(500).json({ success: false, message: '登出失败' });
+        }
+        res.clearCookie('connect.sid');
+        res.json({ success: true });
+    });
+});
+
+// 检查会话状态
+app.get('/api/auth/session', (req, res) => {
+    if (req.session.user) {
+        res.json(req.session.user);
+    } else {
+        res.status(401).json(null);
+    }
+});
+
+// 认证中间件
+function requireAuth(req, res, next) {
+    if (req.session.user) {
+        next();
+    } else {
+        res.status(401).json({ error: '需要认证' });
+    }
+}
+
 // 获取用户列表
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', requireAuth, async (req, res) => {
     try {
         const users = await readJsonFile('users.json');
         res.json(users);
@@ -112,7 +156,7 @@ app.get('/api/users', async (req, res) => {
 });
 
 // 更新用户
-app.put('/api/users', async (req, res) => {
+app.put('/api/users', requireAuth, async (req, res) => {
     try {
         const users = req.body;
         await writeJsonFile('users.json', users);
@@ -123,7 +167,7 @@ app.put('/api/users', async (req, res) => {
 });
 
 // 获取号码池
-app.get('/api/phonePool', async (req, res) => {
+app.get('/api/phonePool', requireAuth, async (req, res) => {
     try {
         const phonePool = await readJsonFile('phonePool.json');
         res.json(phonePool || []);
@@ -133,7 +177,7 @@ app.get('/api/phonePool', async (req, res) => {
 });
 
 // 更新号码池
-app.put('/api/phonePool', async (req, res) => {
+app.put('/api/phonePool', requireAuth, async (req, res) => {
     try {
         const phonePool = req.body;
         await writeJsonFile('phonePool.json', phonePool);
@@ -144,7 +188,7 @@ app.put('/api/phonePool', async (req, res) => {
 });
 
 // 获取分配记录
-app.get('/api/assignments', async (req, res) => {
+app.get('/api/assignments', requireAuth, async (req, res) => {
     try {
         const assignments = await readJsonFile('assignments.json');
         res.json(assignments || {});
@@ -154,7 +198,7 @@ app.get('/api/assignments', async (req, res) => {
 });
 
 // 更新分配记录
-app.put('/api/assignments', async (req, res) => {
+app.put('/api/assignments', requireAuth, async (req, res) => {
     try {
         const assignments = req.body;
         await writeJsonFile('assignments.json', assignments);
@@ -165,7 +209,7 @@ app.put('/api/assignments', async (req, res) => {
 });
 
 // 获取用户数据（拨号记录等）
-app.get('/api/userData/:username', async (req, res) => {
+app.get('/api/userData/:username', requireAuth, async (req, res) => {
     try {
         const { username } = req.params;
         const userData = await readJsonFile('userData.json');
@@ -176,7 +220,7 @@ app.get('/api/userData/:username', async (req, res) => {
 });
 
 // 更新用户数据
-app.put('/api/userData/:username', async (req, res) => {
+app.put('/api/userData/:username', requireAuth, async (req, res) => {
     try {
         const { username } = req.params;
         const newData = req.body;
@@ -190,7 +234,7 @@ app.put('/api/userData/:username', async (req, res) => {
 });
 
 // 清空所有数据
-app.delete('/api/data/clear', async (req, res) => {
+app.delete('/api/data/clear', requireAuth, async (req, res) => {
     try {
         const files = ['users.json', 'phonePool.json', 'assignments.json', 'userData.json'];
         for (const file of files) {
@@ -227,4 +271,10 @@ async function startServer() {
     });
 }
 
-startServer().catch(console.error);
+// 只有在直接运行时才启动服务器
+if (require.main === module) {
+    startServer().catch(console.error);
+}
+
+// 导出 app 和 initializeData 供无服务器函数使用
+module.exports = { app, initializeData };

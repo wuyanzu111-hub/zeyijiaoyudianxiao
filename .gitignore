@@ -72,3 +72,7 @@ logs
 # Temporary files
 tmp/
 temp/
+
+# SSH keys
+y
+y.pub

@@ -79,14 +79,8 @@ class AdminPanel {
             this.users = await apiClient.getUsers();
         } catch (error) {
             console.error('加载用户失败:', error);
-            // 使用默认用户作为备份
-            this.users = {
-                'admin': { password: 'admin123', role: 'admin', name: '系统管理员' },
-                'sales1': { password: 'sales123', role: 'salesperson', name: '业务员1' },
-                'sales2': { password: 'sales123', role: 'salesperson', name: '业务员2' },
-                'sales3': { password: 'sales123', role: 'salesperson', name: '业务员3' }
-            };
-            await this.saveUsers();
+            this.showNotification('无法从服务器加载用户列表', 'error');
+            this.users = {}; // 出错时设置为空
         }
     }
     
@@ -103,6 +97,7 @@ class AdminPanel {
             this.phonePool = await apiClient.getPhonePool();
         } catch (error) {
             console.error('加载号码池失败:', error);
+            this.showNotification('无法从服务器加载号码池', 'error');
             this.phonePool = [];
         }
     }
@@ -120,6 +115,7 @@ class AdminPanel {
             this.assignments = await apiClient.getAssignments();
         } catch (error) {
             console.error('加载分配记录失败:', error);
+            this.showNotification('无法从服务器加载分配记录', 'error');
             this.assignments = {};
         }
     }
@@ -357,7 +353,7 @@ class AdminPanel {
         
         // 随机打乱号码池
         const shuffledPhones = [...this.phonePool].sort(() => Math.random() - 0.5);
-        
+
         // 平均分配
         const phonesPerPerson = Math.floor(shuffledPhones.length / salespeople.length);
         const remainder = shuffledPhones.length % salespeople.length;
@@ -368,21 +364,21 @@ class AdminPanel {
             this.assignments[username] = shuffledPhones.slice(phoneIndex, phoneIndex + phoneCount);
             phoneIndex += phoneCount;
         });
-        
+
         await this.saveAssignments();
         this.updateUI();
-        
+
         const totalAssigned = Object.values(this.assignments).reduce((sum, phones) => sum + phones.length, 0);
         this.showNotification(`成功分配 ${totalAssigned} 个号码给 ${salespeople.length} 个业务员`, 'success');
     }
     
     async clearAllData() {
         if (confirm('确定要清空所有数据吗？此操作不可恢复。')) {
-            this.phonePool = [];
-            this.assignments = {};
-            
             try {
                 await apiClient.clearAllData();
+                // 重新加载数据以同步状态
+                await this.loadPhonePool();
+                await this.loadAssignments();
                 this.updateUI();
                 this.showNotification('所有数据已清空', 'success');
             } catch (error) {
@@ -424,7 +420,10 @@ class AdminPanel {
         
         if (confirm(`确定要删除用户 ${this.users[username].name} 吗？`)) {
             delete this.users[username];
-            delete this.assignments[username];
+            // 在分配记录中也删除该用户
+            if (this.assignments[username]) {
+                delete this.assignments[username];
+            }
             this.saveUsers();
             this.saveAssignments();
             this.updateUI();

@@ -2,25 +2,22 @@
 
 class PhoneDialer {
     constructor() {
+        // 验证业务员权限
+        requireAuth('salesperson');
+        
         this.phones = [];
         this.totalCalls = 0;
         this.lastCallTime = null;
-        this.currentUser = null;
+        this.currentUser = getCurrentUser();
         
-        // 验证业务员权限
-        if (!this.requireAuth('salesperson')) {
-            return;
-        }
-        
-        this.currentUser = this.getCurrentUser();
         this.initializeElements();
         this.bindEvents();
         this.init();
     }
 
     async init() {
-        // 加载分配的号码
-        await this.loadAssignedPhones();
+        // 加载初始数据
+        await this.loadInitialData();
         
         // 更新界面
         this.updateUI();
@@ -431,88 +428,38 @@ this.removePhone(phone).catch(console.error);
                 await apiClient.updateUserData(this.currentUser.username, data);
             } catch (error) {
                 console.error('保存数据失败:', error);
+                this.showNotification('保存数据失败，请重试', 'error');
             }
         }
     }
 
-    // 从服务器加载数据
-    async loadData() {
-        if (this.currentUser) {
-            try {
-                const data = await apiClient.getUserData(this.currentUser.username);
-                this.phones = data.phones || [];
-                this.totalCalls = data.totalCalls || 0;
-                this.lastCallTime = data.lastCallTime ? new Date(data.lastCallTime) : null;
-            } catch (error) {
-                console.error('加载数据失败:', error);
-                this.showNotification('加载历史数据失败', 'error');
-            }
-        }
-    }
+    // 从服务器加载初始数据
+    async loadInitialData() {
+        if (!this.currentUser) return;
 
-    // 加载分配给当前用户的号码
-    async loadAssignedPhones() {
-        if (!this.currentUser) {
-            await this.loadData();
-            return;
-        }
-        
         try {
-            // 获取分配记录
-            const allAssignments = await apiClient.getAssignments();
-            const userPhones = allAssignments[this.currentUser.username] || [];
+            // 并行获取用户数据和分配记录
+            const [userData, allAssignments] = await Promise.all([
+                apiClient.getUserData(this.currentUser.username),
+                apiClient.getAssignments()
+            ]);
+
+            const assignedPhones = allAssignments[this.currentUser.username] || [];
+            const userPhones = userData.phones || [];
+
+            // 合并并去重
+            this.phones = [...new Set([...assignedPhones, ...userPhones])];
+            this.totalCalls = userData.totalCalls || 0;
+            this.lastCallTime = userData.lastCallTime ? new Date(userData.lastCallTime) : null;
             
-            // 获取用户的个人数据
-            const userData = await apiClient.getUserData(this.currentUser.username);
-            const existingPhones = userData.phones || [];
-            const totalCalls = userData.totalCalls || 0;
-            const lastCallTime = userData.lastCallTime ? new Date(userData.lastCallTime) : null;
-            
-            // 去重合并分配的号码和个人添加的号码
-            const allPhones = [...new Set([...userPhones, ...existingPhones])];
-            this.phones = allPhones;
-            this.totalCalls = totalCalls;
-            this.lastCallTime = lastCallTime;
-            
-            // 保存合并后的数据
-            await this.saveData();
         } catch (error) {
-            console.error('加载分配号码失败:', error);
-            // 如果获取失败，尝试加载本地数据
-            await this.loadData();
+            console.error('加载初始数据失败:', error);
+            this.showNotification('无法从服务器加载数据', 'error');
+            // 失败时使用空数据初始化
+            this.phones = [];
+            this.totalCalls = 0;
+            this.lastCallTime = null;
         }
-    }
-
-    // 权限验证
-    requireAuth(role) {
-        const currentUser = this.getCurrentUser();
-        if (!currentUser) {
-            alert('请先登录');
-            window.location.href = 'login.html';
-            return false;
-        }
-        
-        if (role && currentUser.role !== role && currentUser.role !== 'admin') {
-            alert('权限不足');
-            window.location.href = 'login.html';
-            return false;
-        }
-        
-        return true;
-    }
-
-    // 获取当前用户
-    getCurrentUser() {
-        const userStr = localStorage.getItem('currentUser');
-        if (userStr) {
-            try {
-                return JSON.parse(userStr);
-            } catch (error) {
-                console.error('解析用户信息失败:', error);
-                return null;
-            }
-        }
-        return null;
     }
 
     // 更新欢迎文本
